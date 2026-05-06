@@ -155,12 +155,12 @@ class DownloadController extends GetxController {
       final outputFile = File('${dir.path}/${safeTitle}_${videoStream.qualityLabel}.mp4');
 
       // 1. Download Video
-      await _downloadStream(videoStream, videoFile, task, part: 0.7); // 70% progress for video
+      await _downloadStream(videoStream, videoFile, task, part: 0.7); 
       
       // 2. Download Audio
-      await _downloadStream(audioStream, audioFile, task, part: 0.2, offset: 0.7); // 20% for audio
+      await _downloadStream(audioStream, audioFile, task, part: 0.2, offset: 0.7);
 
-      // 3. Merge using FFmpeg (Final 10%)
+      // 3. Merge (Final 10%)
       task.quality = "Merging...";
       queue.refresh();
 
@@ -172,7 +172,6 @@ class DownloadController extends GetxController {
           task.progress = 1.0;
           task.savedFilePath = outputFile.path;
           
-          // Add to history
           Get.find<HistoryController>().addToHistory(HistoryItemModel(
             videoId: info.id,
             title: info.title,
@@ -188,10 +187,8 @@ class DownloadController extends GetxController {
         }
       });
 
-      // Cleanup temp files
       if (videoFile.existsSync()) videoFile.deleteSync();
       if (audioFile.existsSync()) audioFile.deleteSync();
-      
       queue.refresh();
     } catch (e) {
       task.status = DownloadStatus.failed;

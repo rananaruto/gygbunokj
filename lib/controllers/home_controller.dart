@@ -79,6 +79,25 @@ class HomeController extends GetxController {
   /// Detect if URL is a YouTube Shorts link
   bool _detectShort(String url) => url.contains('/shorts/');
 
+  /// Fetch skippable segments (SponsorBlock API)
+  Future<List<Map<String, dynamic>>> fetchSponsorSegments(String videoId) async {
+    try {
+      final response = await _dio.get(
+        'https://sponsor.ajay.app/api/skipSegments',
+        queryParameters: {
+          'videoID': videoId,
+          'categories': '["sponsor", "intro", "outro", "interaction", "selfpromo"]'
+        },
+      );
+      if (response.statusCode == 200) {
+        return List<Map<String, dynamic>>.from(response.data);
+      }
+    } catch (e) {
+      debugPrint('SponsorBlock error: $e');
+    }
+    return [];
+  }
+
   @override
   void onClose() {
     _yt.close();
