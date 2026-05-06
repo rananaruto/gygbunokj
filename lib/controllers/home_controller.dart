@@ -34,8 +34,8 @@ class HomeController extends GetxController {
         videoUrl: video.url,
         isShort: _detectShort(video.url),
       );
-    } on VideoUnplayableException catch (e) {
-      errorMessage.value = 'Video unplayable: ${e.reason}';
+    } on VideoUnplayableException catch (_) {
+      errorMessage.value = 'Video unplayable. It might be private or age-restricted.';
     } on Exception catch (e) {
       debugPrint('fetchVideoInfo error: $e');
       errorMessage.value = 'Could not fetch video. Check the URL and try again.';

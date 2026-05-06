@@ -18,6 +18,7 @@ class AppTheme {
   static const Color textPrimary   = Color(0xFFEEF2FF);
   static const Color textSecondary = Color(0xFF6B7DB3);
   static const Color borderColor   = Color(0xFF1E2A45);
+  static const Color progressBg    = Color(0xFF1A2040);
 
   // ── Gradients ─────────────────────────────────────────
   static const LinearGradient neonGradient = LinearGradient(
