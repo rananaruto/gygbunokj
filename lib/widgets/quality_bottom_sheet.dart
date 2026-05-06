@@ -30,8 +30,9 @@ class _QualityBottomSheetState extends State<_QualityBottomSheet>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
   bool _isLoadingQualities = true;
-  List<dynamic> _videoStreams = [];
-  dynamic _audioStream;
+  List<MuxedStreamInfo> _muxedStreams = [];
+  List<VideoOnlyStreamInfo> _highResStreams = [];
+  AudioOnlyStreamInfo? _audioStream;
 
   final _homeCtrl = Get.find<HomeController>();
   final _downloadCtrl = Get.find<DownloadController>();
@@ -45,11 +46,14 @@ class _QualityBottomSheetState extends State<_QualityBottomSheet>
 
   Future<void> _fetchStreams() async {
     try {
-      final videos = await _homeCtrl.getVideoQualities(widget.info.videoUrl);
+      final muxed = await _homeCtrl.getVideoQualities(widget.info.videoUrl);
+      final highRes = await _homeCtrl.getHighResStreams(widget.info.videoUrl);
       final audio = await _homeCtrl.getBestAudioStream(widget.info.videoUrl);
+      
       if (mounted) {
         setState(() {
-          _videoStreams = videos;
+          _muxedStreams = muxed;
+          _highResStreams = highRes;
           _audioStream = audio;
           _isLoadingQualities = false;
         });
@@ -68,52 +72,34 @@ class _QualityBottomSheetState extends State<_QualityBottomSheet>
   @override
   Widget build(BuildContext context) {
     return DraggableScrollableSheet(
-      initialChildSize: 0.6,
-      minChildSize: 0.4,
-      maxChildSize: 0.85,
+      initialChildSize: 0.7,
+      minChildSize: 0.5,
+      maxChildSize: 0.95,
       builder: (_, scrollCtrl) => Container(
         decoration: const BoxDecoration(
           color: AppTheme.surfaceColor,
           borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
           border: Border(
             top: BorderSide(color: AppTheme.borderColor),
-            left: BorderSide(color: AppTheme.borderColor),
-            right: BorderSide(color: AppTheme.borderColor),
           ),
         ),
         child: Column(
           children: [
-            // Drag handle
             const SizedBox(height: 12),
             Container(
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: AppTheme.borderColor,
-                borderRadius: BorderRadius.circular(4),
-              ),
+              width: 40, height: 4,
+              decoration: BoxDecoration(color: AppTheme.borderColor, borderRadius: BorderRadius.circular(4)),
             ),
             const SizedBox(height: 16),
-
-            // Title
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Text(
-                'Select Quality',
-                style: GoogleFonts.outfit(
-                  color: AppTheme.textPrimary,
-                  fontSize: 18,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
+            Text(
+              'Select Quality',
+              style: GoogleFonts.outfit(color: AppTheme.textPrimary, fontSize: 18, fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 16),
-
-            // Tabs: Video | Audio
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Container(
-                height: 42,
+                height: 44,
                 decoration: BoxDecoration(
                   color: AppTheme.cardColor,
                   borderRadius: BorderRadius.circular(12),
@@ -128,28 +114,21 @@ class _QualityBottomSheetState extends State<_QualityBottomSheet>
                   labelColor: Colors.black,
                   unselectedLabelColor: AppTheme.textSecondary,
                   labelStyle: GoogleFonts.outfit(fontWeight: FontWeight.w700, fontSize: 13),
-                  unselectedLabelStyle: GoogleFonts.outfit(fontSize: 13),
                   tabs: const [
-                    Tab(text: '🎬  Video'),
-                    Tab(text: '🎵  Audio'),
+                    Tab(text: '🎬 Video'),
+                    Tab(text: '🎵 Audio'),
                   ],
                 ),
               ),
             ),
             const SizedBox(height: 12),
-
-            // Tab views
             Expanded(
               child: _isLoadingQualities
-                  ? const Center(
-                      child: CircularProgressIndicator(color: AppTheme.neonCyan, strokeWidth: 2),
-                    )
+                  ? const Center(child: CircularProgressIndicator(color: AppTheme.neonCyan, strokeWidth: 2))
                   : TabBarView(
                       controller: _tabController,
                       children: [
-                        // ── Video Qualities ──────────────────
                         _buildVideoTab(scrollCtrl),
-                        // ── Audio Options ────────────────────
                         _buildAudioTab(scrollCtrl),
                       ],
                     ),
@@ -161,34 +140,52 @@ class _QualityBottomSheetState extends State<_QualityBottomSheet>
   }
 
   Widget _buildVideoTab(ScrollController ctrl) {
-    if (_videoStreams.isEmpty) {
-      return _buildUnavailable('No video streams found.');
-    }
-    return ListView.builder(
+    return ListView(
       controller: ctrl,
       padding: const EdgeInsets.symmetric(horizontal: 20),
-      itemCount: _videoStreams.length,
-      itemBuilder: (_, i) {
-        final stream = _videoStreams[i];
-        final label = stream.qualityLabel as String;
-        final sizeMb = (stream.size.totalBytes / (1024 * 1024)).toStringAsFixed(1);
-        return _QualityTile(
-          icon: Icons.videocam_rounded,
-          iconColor: AppTheme.neonCyan,
-          title: label,
-          subtitle: '$sizeMb MB · ${stream.container.name.toUpperCase()}',
-          onTap: () {
-            Get.back();
-            _downloadCtrl.startVideoDownload(widget.info, stream);
-            Get.snackbar(
-              '⬇️ Download Started',
-              '${widget.info.title} — $label',
-              snackPosition: SnackPosition.BOTTOM,
-              duration: const Duration(seconds: 2),
-            );
-          },
-        );
-      },
+      children: [
+        // ── High Resolution (HQ) Section ───────────────
+        if (_highResStreams.isNotEmpty) ...[
+          _sectionHeader('High Resolution (Merging required)'),
+          ..._highResStreams.map((s) => _QualityTile(
+                icon: Icons.high_quality_rounded,
+                iconColor: AppTheme.neonPurple,
+                title: '${s.videoQuality.label} (HQ)',
+                subtitle: '${(s.size.totalBytes / 1024 / 1024).toStringAsFixed(1)} MB',
+                isPro: true,
+                onTap: () {
+                  Get.back();
+                  if (_audioStream != null) {
+                    _downloadCtrl.startHighResDownload(widget.info, s, _audioStream!);
+                  }
+                },
+              )),
+          const SizedBox(height: 16),
+        ],
+
+        // ── Standard Section ──────────────────────────
+        _sectionHeader('Standard Quality'),
+        ..._muxedStreams.map((s) => _QualityTile(
+              icon: Icons.videocam_rounded,
+              iconColor: AppTheme.neonCyan,
+              title: s.videoQuality.label,
+              subtitle: '${(s.size.totalBytes / 1024 / 1024).toStringAsFixed(1)} MB',
+              onTap: () {
+                Get.back();
+                _downloadCtrl.startVideoDownload(widget.info, s);
+              },
+            )),
+      ],
+    );
+  }
+
+  Widget _sectionHeader(String title) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12, top: 4),
+      child: Text(
+        title.toUpperCase(),
+        style: GoogleFonts.outfit(color: AppTheme.textSecondary, fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1),
+      ),
     );
   }
 

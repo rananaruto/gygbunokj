@@ -16,9 +16,13 @@ class DownloadController extends GetxController {
 
   final RxList<DownloadTaskModel> queue = <DownloadTaskModel>[].obs;
 
-  // ── Public API ────────────────────────────────────────
+  /// Cancel an active download
+  void cancelDownload(DownloadTaskModel task) {
+    task.status = DownloadStatus.cancelled;
+    queue.refresh();
+  }
 
-  /// Start a video download at a given muxed stream quality.
+  /// Start a standard muxed video download (720p and below).
   Future<void> startVideoDownload(
     VideoInfoModel info,
     MuxedStreamInfo streamInfo,
@@ -32,7 +36,26 @@ class DownloadController extends GetxController {
       status: DownloadStatus.queued,
     );
     queue.add(task);
-    await _runDownload(task, info, streamInfo: streamInfo);
+    await _runStandardDownload(task, info, streamInfo: streamInfo);
+  }
+
+  /// Start a high-resolution video download (1080p, 4K, 8K).
+  /// Merges Video-only and Audio-only streams.
+  Future<void> startHighResDownload(
+    VideoInfoModel info,
+    VideoOnlyStreamInfo videoStream,
+    AudioOnlyStreamInfo audioStream,
+  ) async {
+    final task = DownloadTaskModel(
+      videoId: info.id,
+      title: info.title,
+      thumbnailUrl: info.thumbnailUrl,
+      quality: '${videoStream.qualityLabel} (HQ)',
+      isAudio: false,
+      status: DownloadStatus.queued,
+    );
+    queue.add(task);
+    await _runHighResDownload(task, info, videoStream, audioStream);
   }
 
   /// Start an audio-only (MP3) download.
@@ -50,29 +73,20 @@ class DownloadController extends GetxController {
       status: DownloadStatus.queued,
     );
     queue.add(task);
-    await _runDownload(task, info, audioStream: audioStream);
-  }
-
-  /// Cancel an active download
-  void cancelDownload(DownloadTaskModel task) {
-    task.status = DownloadStatus.cancelled;
-    queue.refresh();
+    await _runStandardDownload(task, info, audioStream: audioStream);
   }
 
   // ── Internal ──────────────────────────────────────────
 
-  Future<void> _runDownload(
+  Future<void> _runStandardDownload(
     DownloadTaskModel task,
     VideoInfoModel info, {
     MuxedStreamInfo? streamInfo,
     AudioOnlyStreamInfo? audioStream,
   }) async {
-    // Check / request storage permission
     if (!await _requestStoragePermission()) {
       task.status = DownloadStatus.failed;
       queue.refresh();
-      Get.snackbar('Permission Denied', 'Storage permission is required to download files.',
-          snackPosition: SnackPosition.BOTTOM);
       return;
     }
 
@@ -86,80 +100,127 @@ class DownloadController extends GetxController {
       final fileName = '${safeTitle}_${task.quality}_${DateTime.now().millisecondsSinceEpoch}.$ext';
       final file = File('${dir.path}/$fileName');
 
-      // Get the stream
-      final videoStream = task.isAudio
-          ? _yt.videos.streamsClient.get(audioStream!)
-          : _yt.videos.streamsClient.get(streamInfo!);
+      final streamInfoToUse = (task.isAudio ? audioStream : streamInfo)!;
+      await _downloadStream(streamInfoToUse, file, task);
 
-      final totalBytes = task.isAudio ? audioStream!.size.totalBytes : streamInfo!.size.totalBytes;
-
-      final sink = file.openWrite(mode: FileMode.writeOnlyAppend);
-      var downloaded = 0;
-      var lastTime = DateTime.now();
-      var lastBytes = 0;
-
-      await for (final chunk in videoStream) {
-        // Respect cancellation
-        if (task.status == DownloadStatus.cancelled) {
-          await sink.close();
-          if (file.existsSync()) file.deleteSync();
-          return;
-        }
-
-        sink.add(chunk);
-        downloaded += chunk.length;
-
-        // Update progress
-        task.progress = downloaded / totalBytes;
-
-        // Calculate speed & ETA every 500ms
-        final now = DateTime.now();
-        final elapsed = now.difference(lastTime).inMilliseconds;
-        if (elapsed >= 500) {
-          final bytesDelta = downloaded - lastBytes;
-          task.speedMbps = (bytesDelta / elapsed * 1000) / (1024 * 1024);
-          final remaining = totalBytes - downloaded;
-          task.etaSeconds = task.speedMbps > 0
-              ? (remaining / (task.speedMbps * 1024 * 1024)).round()
-              : 0;
-          lastTime = now;
-          lastBytes = downloaded;
-        }
-        queue.refresh();
+      if (task.status != DownloadStatus.cancelled) {
+        task.status = DownloadStatus.completed;
+        task.progress = 1.0;
+        task.savedFilePath = file.path;
+        
+        Get.find<HistoryController>().addToHistory(HistoryItemModel(
+          videoId: info.id,
+          title: info.title,
+          channelName: info.channelName,
+          thumbnailUrl: info.thumbnailUrl,
+          quality: task.quality,
+          isAudio: task.isAudio,
+          filePath: file.path,
+          downloadedAt: DateTime.now(),
+        ));
       }
-
-      await sink.flush();
-      await sink.close();
-
-      task.status = DownloadStatus.completed;
-      task.progress = 1.0;
-      task.savedFilePath = file.path;
       queue.refresh();
-
-      // Persist to history
-      Get.find<HistoryController>().addToHistory(HistoryItemModel(
-        videoId: info.id,
-        title: info.title,
-        channelName: info.channelName,
-        thumbnailUrl: info.thumbnailUrl,
-        quality: task.quality,
-        isAudio: task.isAudio,
-        filePath: file.path,
-        downloadedAt: DateTime.now(),
-      ));
-
-      Get.snackbar(
-        '✅ Download Complete',
-        '${info.title} saved to Downloads/SnapTube',
-        snackPosition: SnackPosition.BOTTOM,
-        duration: const Duration(seconds: 3),
-      );
     } catch (e) {
-      debugPrint('Download error: $e');
       task.status = DownloadStatus.failed;
       queue.refresh();
-      Get.snackbar('Download Failed', e.toString(), snackPosition: SnackPosition.BOTTOM);
     }
+  }
+
+  // ── Internal ──────────────────────────────────────────
+
+  Future<void> _runHighResDownload(
+    DownloadTaskModel task,
+    VideoInfoModel info,
+    VideoOnlyStreamInfo videoStream,
+    AudioOnlyStreamInfo audioStream,
+  ) async {
+    if (!await _requestStoragePermission()) {
+      task.status = DownloadStatus.failed;
+      queue.refresh();
+      return;
+    }
+
+    task.status = DownloadStatus.downloading;
+    queue.refresh();
+
+    try {
+      final dir = await _getDownloadDir();
+      final tempDir = await getTemporaryDirectory();
+      final safeTitle = _sanitizeFileName(info.title);
+      
+      final videoFile = File('${tempDir.path}/${info.id}_video.tmp');
+      final audioFile = File('${tempDir.path}/${info.id}_audio.tmp');
+      final outputFile = File('${dir.path}/${safeTitle}_${videoStream.qualityLabel}.mp4');
+
+      // 1. Download Video
+      await _downloadStream(videoStream, videoFile, task, part: 0.7); // 70% progress for video
+      
+      // 2. Download Audio
+      await _downloadStream(audioStream, audioFile, task, part: 0.2, offset: 0.7); // 20% for audio
+
+      // 3. Merge using FFmpeg (Final 10%)
+      task.quality = "Merging...";
+      queue.refresh();
+
+      final command = '-i "${videoFile.path}" -i "${audioFile.path}" -c copy "${outputFile.path}" -y';
+      await FFmpegKit.execute(command).then((session) async {
+        final returnCode = await session.getReturnCode();
+        if (ReturnCode.isSuccess(returnCode)) {
+          task.status = DownloadStatus.completed;
+          task.progress = 1.0;
+          task.savedFilePath = outputFile.path;
+          
+          // Add to history
+          Get.find<HistoryController>().addToHistory(HistoryItemModel(
+            videoId: info.id,
+            title: info.title,
+            channelName: info.channelName,
+            thumbnailUrl: info.thumbnailUrl,
+            quality: videoStream.qualityLabel,
+            isAudio: false,
+            filePath: outputFile.path,
+            downloadedAt: DateTime.now(),
+          ));
+        } else {
+          task.status = DownloadStatus.failed;
+        }
+      });
+
+      // Cleanup temp files
+      if (videoFile.existsSync()) videoFile.deleteSync();
+      if (audioFile.existsSync()) audioFile.deleteSync();
+      
+      queue.refresh();
+    } catch (e) {
+      task.status = DownloadStatus.failed;
+      queue.refresh();
+    }
+  }
+
+  Future<void> _downloadStream(
+    StreamInfo streamInfo,
+    File file,
+    DownloadTaskModel task, {
+    double part = 1.0,
+    double offset = 0.0,
+  }) async {
+    final stream = _yt.videos.streamsClient.get(streamInfo);
+    final sink = file.openWrite();
+    final totalBytes = streamInfo.size.totalBytes;
+    var downloaded = 0;
+
+    await for (final chunk in stream) {
+      if (task.status == DownloadStatus.cancelled) {
+        await sink.close();
+        return;
+      }
+      sink.add(chunk);
+      downloaded += chunk.length;
+      task.progress = offset + ((downloaded / totalBytes) * part);
+      queue.refresh();
+    }
+    await sink.flush();
+    await sink.close();
   }
 
   Future<bool> _requestStoragePermission() async {

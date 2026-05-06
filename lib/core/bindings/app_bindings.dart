@@ -9,6 +9,7 @@ class AppBindings extends Bindings {
   void dependencies() {
     Get.put(HomeController(), permanent: true);
     Get.put(DownloadController(), permanent: true);
-    Get.put(HistoryController(), permanent: true);
+    Get.lazyPut(() => HistoryController());
+    Get.lazyPut(() => PremiumController());
   }
 }

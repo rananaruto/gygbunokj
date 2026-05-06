@@ -10,7 +10,17 @@ dependencies:
   flutter:
     sdk: flutter
 
-  # Core icons
+  # Advanced Engine (Merging 4K/8K, GIF, Compression)
+  ffmpeg_kit_flutter_full_gpl: ^6.0.3
+
+  # Database for Queue & Vault
+  sqflite: ^2.3.2
+  path: ^1.9.0
+
+  # Metadata & Formatting
+  intl: ^0.19.0
+  
+  # Icons & UI
   cupertino_icons: ^1.0.6
   font_awesome_flutter: ^10.6.0
 

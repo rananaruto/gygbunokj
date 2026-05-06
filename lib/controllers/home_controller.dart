@@ -1,5 +1,5 @@
-import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
+import 'package:dio/dio.dart';
 import 'package:youtube_explode_dart/youtube_explode_dart.dart';
 import 'package:snaptube/models/video_info_model.dart';
 
@@ -7,6 +7,7 @@ import 'package:snaptube/models/video_info_model.dart';
 /// Also manages the URL input and search state on the Home screen.
 class HomeController extends GetxController {
   final _yt = YoutubeExplode();
+  final _dio = Dio();
 
   // ── Observables ───────────────────────────────────────
   final isLoading = false.obs;
@@ -44,20 +45,23 @@ class HomeController extends GetxController {
     }
   }
 
-  /// Get available video stream qualities for quality picker bottom sheet.
+  /// Get available muxed video streams (720p and below).
   Future<List<MuxedStreamInfo>> getVideoQualities(String videoUrl) async {
     final manifest = await _yt.videos.streamsClient.getManifest(videoUrl);
-    // Sort descending by quality
     final sorted = manifest.muxed.toList()
-      ..sort((a, b) {
-        final aq = int.tryParse(a.qualityLabel.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0;
-        final bq = int.tryParse(b.qualityLabel.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0;
-        return bq.compareTo(aq);
-      });
+      ..sort((a, b) => b.videoQuality.index.compareTo(a.videoQuality.index));
     return sorted;
   }
 
-  /// Get the audio-only stream for MP3 download.
+  /// Get high-resolution video-only DASH streams (1080p, 4K, 8K).
+  Future<List<VideoOnlyStreamInfo>> getHighResStreams(String videoUrl) async {
+    final manifest = await _yt.videos.streamsClient.getManifest(videoUrl);
+    final sorted = manifest.videoOnly.toList()
+      ..sort((a, b) => b.videoQuality.index.compareTo(a.videoQuality.index));
+    return sorted;
+  }
+
+  /// Get the best audio-only stream for merging or MP3.
   Future<AudioOnlyStreamInfo?> getBestAudioStream(String videoUrl) async {
     final manifest = await _yt.videos.streamsClient.getManifest(videoUrl);
     if (manifest.audioOnly.isEmpty) return null;
