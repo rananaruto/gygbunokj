@@ -45,6 +45,26 @@ class HomeController extends GetxController {
     }
   }
 
+  /// Bulk fetch multiple videos from a list of URLs
+  Future<void> fetchBulkVideos(List<String> urls) async {
+    isLoading.value = true;
+    int count = 0;
+    for (var url in urls) {
+      if (url.trim().isEmpty) continue;
+      await fetchVideoInfo(url);
+      if (videoInfo.value != null) {
+        // Auto-queue best quality for bulk
+        final qualities = await getVideoQualities(url);
+        if (qualities.isNotEmpty) {
+          Get.find<DownloadController>().startVideoDownload(videoInfo.value!, qualities.first);
+          count++;
+        }
+      }
+    }
+    Get.snackbar('Bulk Download', 'Queued $count videos from list.', snackPosition: SnackPosition.BOTTOM);
+    isLoading.value = false;
+  }
+
   /// Get available muxed video streams (720p and below).
   Future<List<MuxedStreamInfo>> getVideoQualities(String videoUrl) async {
     final manifest = await _yt.videos.streamsClient.getManifest(videoUrl);
