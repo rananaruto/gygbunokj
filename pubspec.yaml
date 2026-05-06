@@ -22,7 +22,10 @@ dependencies:
   font_awesome_flutter: ^10.6.0
 
   # YouTube engine — fetch video info, stream manifests
-  youtube_explode_dart: ^2.3.4
+  youtube_explode_dart: ^2.5.3
+
+  # HTTP client for API requests (SponsorBlock)
+  dio: ^5.4.0
 
   # State management (GetX)
   get: ^4.6.6
