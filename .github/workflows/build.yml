@@ -49,7 +49,7 @@ jobs:
 
       # ── 7. Build release APK (no signing = debug key for now) ─────
       - name: Build APK (release)
-        run: flutter build apk --release --no-shrink
+        run: flutter build apk --release
 
       # ── 8. Rename APK with version + timestamp ────────────────────
       - name: Rename APK
