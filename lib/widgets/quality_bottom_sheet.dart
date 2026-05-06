@@ -1,6 +1,6 @@
-import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:youtube_explode_dart/youtube_explode_dart.dart';
 import 'package:snaptube/controllers/download_controller.dart';
 import 'package:snaptube/controllers/home_controller.dart';
 import 'package:snaptube/core/theme/app_theme.dart';

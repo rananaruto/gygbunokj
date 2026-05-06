@@ -2,6 +2,7 @@ import 'package:get/get.dart';
 import 'package:snaptube/controllers/download_controller.dart';
 import 'package:snaptube/controllers/history_controller.dart';
 import 'package:snaptube/controllers/home_controller.dart';
+import 'package:snaptube/controllers/vault_controller.dart';
 
 /// Registers all GetX controllers at app startup.
 class AppBindings extends Bindings {
