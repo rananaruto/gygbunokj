@@ -10,9 +10,6 @@ dependencies:
   flutter:
     sdk: flutter
 
-  # Advanced Engine (Merging 4K/8K, GIF, Compression)
-  ffmpeg_kit_flutter_video: ^6.0.3
-
   # Database for Queue & Vault
   sqflite: ^2.3.2
   path: ^1.9.0

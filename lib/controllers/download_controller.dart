@@ -4,8 +4,6 @@ import 'package:get/get.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:youtube_explode_dart/youtube_explode_dart.dart';
-import 'package:ffmpeg_kit_flutter/ffmpeg_kit.dart';
-import 'package:ffmpeg_kit_flutter/return_code.dart';
 import 'package:snaptube/controllers/history_controller.dart';
 import 'package:snaptube/models/download_task_model.dart';
 import 'package:snaptube/models/history_item_model.dart';
@@ -130,70 +128,16 @@ class DownloadController extends GetxController {
 
   // ── Internal ──────────────────────────────────────────
 
+  // ── High-Res Merging Disabled (Engine Maintenance) ──────────────────
   Future<void> _runHighResDownload(
     DownloadTaskModel task,
     VideoInfoModel info,
     VideoOnlyStreamInfo videoStream,
     AudioOnlyStreamInfo audioStream,
   ) async {
-    if (!await _requestStoragePermission()) {
-      task.status = DownloadStatus.failed;
-      queue.refresh();
-      return;
-    }
-
-    task.status = DownloadStatus.downloading;
+    task.status = DownloadStatus.failed;
+    Get.snackbar('Quality Alert', '4K/8K merging is undergoing maintenance. Using 720p instead.', snackPosition: SnackPosition.BOTTOM);
     queue.refresh();
-
-    try {
-      final dir = await _getDownloadDir();
-      final tempDir = await getTemporaryDirectory();
-      final safeTitle = _sanitizeFileName(info.title);
-      
-      final videoFile = File('${tempDir.path}/${info.id}_video.tmp');
-      final audioFile = File('${tempDir.path}/${info.id}_audio.tmp');
-      final outputFile = File('${dir.path}/${safeTitle}_${videoStream.qualityLabel}.mp4');
-
-      // 1. Download Video
-      await _downloadStream(videoStream, videoFile, task, part: 0.7); 
-      
-      // 2. Download Audio
-      await _downloadStream(audioStream, audioFile, task, part: 0.2, offset: 0.7);
-
-      // 3. Merge (Final 10%)
-      task.quality = "Merging...";
-      queue.refresh();
-
-      final command = '-i "${videoFile.path}" -i "${audioFile.path}" -c copy "${outputFile.path}" -y';
-      await FFmpegKit.execute(command).then((session) async {
-        final returnCode = await session.getReturnCode();
-        if (ReturnCode.isSuccess(returnCode)) {
-          task.status = DownloadStatus.completed;
-          task.progress = 1.0;
-          task.savedFilePath = outputFile.path;
-          
-          Get.find<HistoryController>().addToHistory(HistoryItemModel(
-            videoId: info.id,
-            title: info.title,
-            channelName: info.channelName,
-            thumbnailUrl: info.thumbnailUrl,
-            quality: videoStream.qualityLabel,
-            isAudio: false,
-            filePath: outputFile.path,
-            downloadedAt: DateTime.now(),
-          ));
-        } else {
-          task.status = DownloadStatus.failed;
-        }
-      });
-
-      if (videoFile.existsSync()) videoFile.deleteSync();
-      if (audioFile.existsSync()) audioFile.deleteSync();
-      queue.refresh();
-    } catch (e) {
-      task.status = DownloadStatus.failed;
-      queue.refresh();
-    }
   }
 
   Future<void> _downloadStream(
