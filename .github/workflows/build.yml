@@ -1,0 +1,93 @@
+name: Build SnapTube APK
+
+# Trigger: push to main OR manual run from Actions tab
+on:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+jobs:
+  build-apk:
+    name: Build Release APK
+    runs-on: ubuntu-latest
+
+    steps:
+      # ── 1. Checkout code ─────────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ── 2. Setup Java (required by Android SDK / Gradle) ─────────
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      # ── 3. Setup Flutter (stable channel) ────────────────────────
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.22.0'
+          channel: 'stable'
+          cache: true
+
+      # ── 4. Show versions for debugging ───────────────────────────
+      - name: Flutter & Dart version info
+        run: |
+          flutter --version
+          dart --version
+
+      # ── 5. Get pub dependencies ───────────────────────────────────
+      - name: Install dependencies
+        run: flutter pub get
+
+      # ── 6. (Optional) Run tests ───────────────────────────────────
+      # - name: Run tests
+      #   run: flutter test
+
+      # ── 7. Build release APK (no signing = debug key for now) ─────
+      - name: Build APK (release)
+        run: flutter build apk --release --no-shrink
+
+      # ── 8. Rename APK with version + timestamp ────────────────────
+      - name: Rename APK
+        run: |
+          mkdir -p output
+          VERSION=$(grep 'version:' pubspec.yaml | head -1 | awk '{print $2}')
+          DATE=$(date +'%Y%m%d-%H%M')
+          cp build/app/outputs/flutter-apk/app-release.apk \
+             output/SnapTube-v${VERSION}-${DATE}.apk
+          echo "APK_NAME=SnapTube-v${VERSION}-${DATE}.apk" >> $GITHUB_ENV
+
+      # ── 9. Upload APK as workflow artifact (download from Actions) ─
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.APK_NAME }}
+          path: output/*.apk
+          retention-days: 30
+
+      # ── 10. Create GitHub Release on push to main ─────────────────
+      - name: Create GitHub Release
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ github.run_number }}
+          name: "SnapTube Build #${{ github.run_number }}"
+          body: |
+            ## SnapTube APK — Auto Build
+
+            **Commit:** ${{ github.sha }}
+            **Branch:** ${{ github.ref_name }}
+            **Triggered by:** ${{ github.actor }}
+
+            ### Install
+            Download the APK below and install on your Android device.
+            > Enable **Install from Unknown Sources** in device settings first.
+          files: output/*.apk
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
