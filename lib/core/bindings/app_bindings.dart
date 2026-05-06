@@ -10,6 +10,5 @@ class AppBindings extends Bindings {
     Get.put(HomeController(), permanent: true);
     Get.put(DownloadController(), permanent: true);
     Get.lazyPut(() => HistoryController());
-    Get.lazyPut(() => PremiumController());
   }
 }

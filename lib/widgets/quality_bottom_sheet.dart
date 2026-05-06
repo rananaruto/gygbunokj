@@ -152,7 +152,6 @@ class _QualityBottomSheetState extends State<_QualityBottomSheet>
                 iconColor: AppTheme.neonPurple,
                 title: '${s.videoQuality.label} (HQ)',
                 subtitle: '${(s.size.totalBytes / 1024 / 1024).toStringAsFixed(1)} MB',
-                isPro: true,
                 onTap: () {
                   Get.back();
                   if (_audioStream != null) {
